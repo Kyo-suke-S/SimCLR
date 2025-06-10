@@ -6,7 +6,7 @@ from exceptions.exceptions import InvalidBackboneError
 
 class ResNetScratch(nn.Module):#Train without SimCLR but scratch
 
-    def __init__(self, base_model, out_dim):#About out_dim: stl10:10
+    def __init__(self, base_model, out_dim=10):#About out_dim: stl10:10
         super(ResNetScratch, self).__init__()
         self.resnet_dict = {"resnet18": models.resnet18(pretrained=False, num_classes=out_dim),
                             "resnet50": models.resnet50(pretrained=False, num_classes=out_dim)}

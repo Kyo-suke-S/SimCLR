@@ -3,8 +3,11 @@ import torch
 import torch.backends.cudnn as cudnn
 from torchvision import models
 from data_aug.contrastive_learning_dataset import ContrastiveLearningDataset
+from data_aug.scratch_learning_dataset import get_cifar10_data_loaders, get_stl10_data_loaders
 from models.resnet_simclr import ResNetSimCLR
+from models.resnet_scratch import ResNetScratch
 from simclr import SimCLR
+from scratch import Scratch
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -15,6 +18,8 @@ parser.add_argument('-data', metavar='DIR', default='./datasets',
                     help='path to dataset')
 parser.add_argument('--dataset-name', default='stl10',
                     help='dataset name', choices=['stl10', 'cifar10'])
+parser.add_argument('--method', default='simclr',
+                    help='mathod name(simclr or scratch)', choices=['simclr', 'scratch'])
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
@@ -55,35 +60,71 @@ parser.add_argument('--no-tqdm', action='store_true', help='Disable tqdm')
 
 def main():
     args = parser.parse_args()
-    assert args.n_views == 2, "Only two view training is supported. Please use --n-views 2."
-    # check if gpu training is available
-    if not args.disable_cuda and torch.cuda.is_available():
-        args.device = torch.device('cuda')
-        cudnn.deterministic = True
-        cudnn.benchmark = True
-    else:
-        args.device = torch.device('cpu')
-        args.gpu_index = -1
+    if args.method == 'simclr':
+        assert args.n_views == 2, "Only two view training is supported. Please use --n-views 2."
+        # check if gpu training is available
+        if not args.disable_cuda and torch.cuda.is_available():
+            args.device = torch.device('cuda')
+            cudnn.deterministic = True
+            cudnn.benchmark = True
+        else:
+            args.device = torch.device('cpu')
+            args.gpu_index = -1
 
-    dataset = ContrastiveLearningDataset(args.data)
+        dataset = ContrastiveLearningDataset(args.data)
 
-    train_dataset = dataset.get_dataset(args.dataset_name, args.n_views)
+        train_dataset = dataset.get_dataset(args.dataset_name, args.n_views)#stl-10ならunlabel
 
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True, drop_last=True)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=args.batch_size, shuffle=True,
+            num_workers=args.workers, pin_memory=True, drop_last=True)
 
-    model = ResNetSimCLR(base_model=args.arch, out_dim=args.out_dim)#defalt:128 out_dim
+        model = ResNetSimCLR(base_model=args.arch, out_dim=args.out_dim)#defalt:128 out_dim
 
-    optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
+        optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
+        #optimizer = torch.optim.Adam(model.parameters(), lr=3e-4, weight_decay=0.0008)
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0,
+        #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0,
+        #                                                   last_epoch=-1)
+
+        #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
+        with torch.cuda.device(args.gpu_index):
+            simclr = SimCLR(model=model, optimizer=optimizer, args=args)#scheduler=scheduler
+            simclr.train(train_loader)
+
+    elif args.method == 'scratch':
+        #assert args.n_views == 2, "Only two view training is supported. Please use --n-views 2."
+        # check if gpu training is available
+        if not args.disable_cuda and torch.cuda.is_available():
+            args.device = torch.device('cuda')
+            cudnn.deterministic = True
+            cudnn.benchmark = True
+        else:
+            args.device = torch.device('cpu')
+            args.gpu_index = -1
+        
+        download = True
+        if args.dataset_name == 'cifar10':
+            train_loader, val_loader = get_cifar10_data_loaders(download, args.data)
+            args.out_dim = 10
+        elif args.dataset_name == 'stl10':
+            train_loader, val_loader = get_stl10_data_loaders(download, args.data)
+            args.out_dim = 10
+        
+        model = ResNetScratch(base_model=args.arch, out_dim=args.out_dim)
+
+        optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
+
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0,
                                                            last_epoch=-1)
+        
+        with torch.cuda.device(args.gpu_index):
+            scratch = Scratch(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
+            scratch.train(train_loader, val_loader)
 
-    #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
-    with torch.cuda.device(args.gpu_index):
-        simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
-        simclr.train(train_loader)
+    else:
+        print("Input correct words")
+        return
 
 
 if __name__ == "__main__":

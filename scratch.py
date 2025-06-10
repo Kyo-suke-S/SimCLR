@@ -18,7 +18,7 @@ class Scratch(object):
         self.args = kwargs['args']
         self.model = kwargs['model'].to(self.args.device)
         self.optimizer = kwargs['optimizer']
-        self.scheduler = kwargs['scheduler']
+        #self.scheduler = kwargs['scheduler']
         self.writer = SummaryWriter()
         logging.basicConfig(filename=os.path.join(self.writer.log_dir, 'training.log'), level=logging.DEBUG)
         self.criterion = torch.nn.CrossEntropyLoss().to(self.args.device)
@@ -36,7 +36,7 @@ class Scratch(object):
 
         for epoch_counter in range(self.args.epochs):
             top1_train_accuracy = 0
-            for counter, (x_batch, y_batch) in tqdm(enumerate(train_loader), disable=self.args.no_tqdm):
+            for counter, (x_batch, y_batch) in enumerate(tqdm(train_loader, disable=self.args.no_tqdm)):
                 x_batch = x_batch.to(self.args.device)
                 y_batch = y_batch.to(self.args.device)
 
@@ -56,7 +56,7 @@ class Scratch(object):
             top1_accuracy = 0
             top5_accuracy = 0
 
-            for counter, (x_batch, y_batch) in tqdm(enumerate(val_loader), disable=self.args.no_tqdm):
+            for counter, (x_batch, y_batch) in enumerate(tqdm(val_loader, disable=self.args.no_tqdm)):
                 x_batch = x_batch.to(self.args.device)
                 y_batch = y_batch.to(self.args.device)
 
@@ -74,13 +74,13 @@ class Scratch(object):
             self.writer.add_scalar('loss', loss, global_step=n_iter)
             self.writer.add_scalar('acc/top1', top1_accuracy, global_step=n_iter)
             self.writer.add_scalar('acc/top5', top5_accuracy, global_step=n_iter)
-            self.writer.add_scalar('learning_rate', self.scheduler.get_lr()[0], global_step=n_iter)
+            #self.writer.add_scalar('learning_rate', self.scheduler.get_lr()[0], global_step=n_iter)
 
             #n_iter += 1
 
             # warmup for the first 10 epochs
-            if epoch_counter >= 10:
-                self.scheduler.step()
+            #if epoch_counter >= 10:
+            #    self.scheduler.step()
             logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
 
         logging.info("Training has finished.")
